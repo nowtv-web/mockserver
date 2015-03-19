@@ -98,6 +98,8 @@ public class Main {
 
             SSLFactory.keyStorePassword = cmd.getOptionValue(KEY_STORE_PASSWORD);
         }
+
+        SSLFactory.getInstance().buildKeyStore();
     }
 
     private static void showUsage(Options options) {

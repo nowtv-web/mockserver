@@ -1,5 +1,6 @@
 package org.mockserver.socket;
 
+import org.apache.commons.codec.binary.Base64;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x509.BasicConstraints;
@@ -9,11 +10,14 @@ import org.bouncycastle.asn1.x509.X509Extensions;
 import org.bouncycastle.jce.X509Principal;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.x509.X509V3CertificateGenerator;
+import org.mockserver.client.serialization.Base64Converter;
 
+import java.io.FileOutputStream;
 import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
@@ -58,8 +62,8 @@ public class KeyStoreFactory {
         x509V1CertificateGenerator.addExtension(X509Extensions.BasicConstraints, false, new BasicConstraints(true));
         x509V1CertificateGenerator.setSerialNumber(BigInteger.valueOf(System.currentTimeMillis()));
         x509V1CertificateGenerator.setIssuerDN(new X509Principal(issuer));
-        x509V1CertificateGenerator.setNotBefore(new Date(System.currentTimeMillis() - 1000L * 60 * 60 * 24 * 30));
-        x509V1CertificateGenerator.setNotAfter(new Date(System.currentTimeMillis() + (1000L * 60 * 60 * 24 * 30)));
+        x509V1CertificateGenerator.setNotBefore(getNotBeforeDate());
+        x509V1CertificateGenerator.setNotAfter(getNotAfterDate());
         x509V1CertificateGenerator.setSubjectDN(new X509Principal(subject));
         x509V1CertificateGenerator.setPublicKey(publicKey);
         x509V1CertificateGenerator.setSignatureAlgorithm("SHA1WithRSAEncryption");
@@ -88,8 +92,8 @@ public class KeyStoreFactory {
         X509V3CertificateGenerator x509V3CertificateGenerator = new X509V3CertificateGenerator();
         x509V3CertificateGenerator.setSerialNumber(BigInteger.valueOf(System.currentTimeMillis()));
         x509V3CertificateGenerator.setIssuerDN(new X509Principal(issuer));
-        x509V3CertificateGenerator.setNotBefore(new Date(System.currentTimeMillis() - 1000L * 60 * 60 * 24 * 30));
-        x509V3CertificateGenerator.setNotAfter(new Date(System.currentTimeMillis() + (1000L * 60 * 60 * 24 * 30)));
+        x509V3CertificateGenerator.setNotBefore(getNotBeforeDate());
+        x509V3CertificateGenerator.setNotAfter(getNotAfterDate());
         x509V3CertificateGenerator.setSubjectDN(new X509Principal("CN=" + domain + ", O=MockServer, L=London, ST=England, C=UK"));
         x509V3CertificateGenerator.setPublicKey(publicKey);
         x509V3CertificateGenerator.setSignatureAlgorithm("SHA1WithRSAEncryption");
@@ -147,7 +151,10 @@ public class KeyStoreFactory {
         // generate certificates
         //
         X509Certificate caCert = createCACert(certificateAuthorityPublicKey, certificateAuthorityPrivateKey);
+        writeToFile("MockServer_CA.cer", caCert);
+
         X509Certificate clientCert = createClientCert(publicKey, certificateAuthorityPrivateKey, certificateAuthorityPublicKey, domain, subjectAlternativeNameDomains, subjectAlternativeNameIps);
+        writeToFile("MockServer_Client.cer", clientCert);
 
         // create new key store
         KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
@@ -157,5 +164,26 @@ public class KeyStoreFactory {
         keyStore.setKeyEntry(certificationAlias, privateKey, keyStorePassword, new X509Certificate[]{clientCert, caCert});
 
         return keyStore;
+    }
+
+    private Date getNotBeforeDate() {
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.YEAR, -1);
+        return calendar.getTime();
+    }
+
+    private Date getNotAfterDate() {
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.YEAR, 25);
+        return calendar.getTime();
+    }
+
+    private void writeToFile(String fileName, X509Certificate certificate) throws Exception {
+        final FileOutputStream os = new FileOutputStream(fileName);
+        os.write("-----BEGIN CERTIFICATE-----\n".getBytes("US-ASCII"));
+
+        os.write(Base64Converter.stringToBase64Bytes(certificate.getEncoded()).getBytes());
+        os.write("\n-----END CERTIFICATE-----\n".getBytes("US-ASCII"));
+        os.close();
     }
 }
